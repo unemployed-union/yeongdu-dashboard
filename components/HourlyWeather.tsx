@@ -1,17 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { IconType } from "react-icons";
-import {
-  WiCloud,
-  WiCloudy,
-  WiDaySunny,
-  WiNightClear,
-  WiRain,
-  WiRainMix,
-  WiShowers,
-  WiSnow,
-} from "react-icons/wi";
+
+import { WeatherIcon } from "@/components/weather/WeatherIcon";
+import { getWeatherIconCodeFromKma } from "@/lib/weather/get-weather-icon-code";
+import { useEffect, useState } from "react";
 
 interface HourlyWeatherItem {
   forecastAt: string;
@@ -40,10 +33,7 @@ async function fetchHourlyWeather(): Promise<HourlyWeatherResponse> {
       message?: string;
     } | null;
 
-    throw new Error(
-      body?.message ??
-        "시간별 날씨를 불러오지 못했습니다.",
-    );
+    throw new Error(body?.message ?? "시간별 날씨를 불러오지 못했습니다.");
   }
 
   return response.json() as Promise<HourlyWeatherResponse>;
@@ -61,39 +51,6 @@ function isNight(forecastAt: string): boolean {
   return hour < 6 || hour >= 19;
 }
 
-function getWeatherIcon(
-  forecast: HourlyWeatherItem,
-): IconType {
-  switch (forecast.precipitationType) {
-    case 1:
-    case 5:
-      return WiRain;
-
-    case 2:
-    case 6:
-      return WiRainMix;
-
-    case 3:
-    case 7:
-      return WiSnow;
-
-    case 4:
-      return WiShowers;
-  }
-
-  if (forecast.sky === 1) {
-    return isNight(forecast.forecastAt)
-      ? WiNightClear
-      : WiDaySunny;
-  }
-
-  if (forecast.sky === 3) {
-    return WiCloud;
-  }
-
-  return WiCloudy;
-}
-
 function formatForecastTime(forecastAt: string): string {
   return new Intl.DateTimeFormat("ko-KR", {
     hour: "numeric",
@@ -102,11 +59,7 @@ function formatForecastTime(forecastAt: string): string {
   }).format(new Date(forecastAt));
 }
 
-function Temperature({
-  value,
-}: {
-  value: number | null;
-}) {
+function Temperature({ value }: { value: number | null }) {
   return (
     <>
       {value !== null && Number.isFinite(value)
@@ -117,100 +70,145 @@ function Temperature({
 }
 
 export function HourlyWeather() {
-  const { data, isPending, isError, error } = useQuery({
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+    }, 60 * 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const {
+    data,
+    isPending,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ["weather", "hourly"],
     queryFn: fetchHourlyWeather,
-
-    // 초단기예보 변경 확인
-    refetchInterval: 10 * 60 * 1000,
     staleTime: 5 * 60 * 1000,
-
+    refetchInterval: 10 * 60 * 1000,
+    refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   });
 
+  // 먼저 로딩 상태 처리
   if (isPending) {
     return (
-      <div className="flex min-h-36 items-center justify-center text-neutral-500">
-        시간별 날씨를 불러오는 중입니다.
+      <div className="grid grid-cols-6 gap-2">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div
+            key={index}
+            className="h-40 animate-pulse rounded-2xl bg-white/[0.04]"
+          />
+        ))}
       </div>
     );
   }
 
+  // 오류 상태 처리
   if (isError) {
     return (
-      <div className="flex min-h-36 flex-col items-center justify-center gap-1 text-neutral-500">
-        <p>시간별 날씨를 불러오지 못했습니다.</p>
-        <p className="text-xs text-red-400">
-          {error.message}
-        </p>
-      </div>
+      <p className="text-sm text-red-300">
+        {error instanceof Error
+          ? error.message
+          : "시간별 날씨를 불러오지 못했습니다."}
+      </p>
     );
   }
 
-  if (data.forecasts.length === 0) {
+  // 요청은 성공했지만 응답 구조가 이상한 경우
+  if (!data || !Array.isArray(data.forecasts)) {
     return (
-      <div className="flex min-h-36 items-center justify-center text-neutral-500">
-        표시할 초단기예보가 없습니다.
-      </div>
+      <p className="text-sm text-neutral-500">
+        표시할 시간별 예보가 없습니다.
+      </p>
+    );
+  }
+
+  const currentHour = new Date(now);
+  currentHour.setMinutes(0, 0, 0);
+
+  const visibleForecasts = data.forecasts
+    .filter((forecast) => {
+      const forecastTime = new Date(
+        forecast.forecastAt,
+      ).getTime();
+
+      return (
+        Number.isFinite(forecastTime) &&
+        forecastTime >= currentHour.getTime()
+      );
+    })
+    .slice(0, 6);
+
+  if (visibleForecasts.length === 0) {
+    return (
+      <p className="text-sm text-neutral-500">
+        표시할 시간별 예보가 없습니다.
+      </p>
     );
   }
 
   return (
-    <section className="w-full">
-      <div className="mb-3 flex items-end justify-between">
-        <h2 className="text-lg font-semibold text-neutral-200">
-          시간별 날씨
-        </h2>
-
-        <p className="text-xs text-neutral-600">
-          앞으로 6시간
-        </p>
-      </div>
-
-      <div className="grid grid-cols-6 gap-2">
-        {data.forecasts.map((forecast) => {
-          const WeatherIcon = getWeatherIcon(forecast);
-
-          return (
-            <article
-              key={forecast.forecastAt}
-              className="
-                flex min-w-0 flex-col items-center
-                rounded-2xl border border-white/5
-                bg-white/[0.04] px-2 py-3
-              "
-            >
-              <time className="text-sm text-neutral-400">
-                {formatForecastTime(
-                  forecast.forecastAt,
-                )}
-              </time>
-
-              <WeatherIcon
-                aria-label={forecast.description}
-                className="my-1 h-10 w-10 shrink-0 md:h-12 md:w-12"
-              />
-
-              <p className="text-xl font-semibold text-neutral-100">
-                <Temperature
-                  value={forecast.temperature}
-                />
-              </p>
-
-              <p className="mt-1 max-w-full truncate text-xs text-neutral-500">
-                {forecast.description}
-              </p>
-
-              {forecast.humidity !== null && (
-                <p className="mt-1 text-[0.7rem] text-neutral-600">
-                  습도 {forecast.humidity}%
-                </p>
-              )}
-            </article>
+    <div className="grid grid-cols-6 gap-2">
+      {visibleForecasts.map((forecast) => {
+        const iconCode =
+          getWeatherIconCodeFromKma(
+            forecast.sky,
+            forecast.precipitationType,
           );
-        })}
-      </div>
-    </section>
+
+        const isDaytime = !isNight(
+          forecast.forecastAt,
+        );
+
+        return (
+          <article
+            key={forecast.forecastAt}
+            className="
+              flex min-w-0 flex-col items-center
+              rounded-2xl border border-white/5
+              bg-white/[0.04] px-2 py-3
+            "
+          >
+            <time className="text-sm text-neutral-400">
+              {formatForecastTime(
+                forecast.forecastAt,
+              )}
+            </time>
+
+            <WeatherIcon
+              code={iconCode}
+              isDaytime={isDaytime}
+              size={48}
+              ariaLabel={forecast.description}
+              className="my-1 shrink-0"
+            />
+
+            <p className="text-xl font-semibold text-neutral-100">
+              <Temperature
+                value={forecast.temperature}
+              />
+            </p>
+
+            <p className="mt-1 max-w-full truncate text-xs text-neutral-500">
+              {forecast.description}
+            </p>
+
+            {forecast.humidity !== null && (
+              <p className="mt-1 text-[0.7rem] text-neutral-600">
+                습도 {forecast.humidity}%
+              </p>
+            )}
+          </article>
+        );
+      })}
+    </div>
   );
 }

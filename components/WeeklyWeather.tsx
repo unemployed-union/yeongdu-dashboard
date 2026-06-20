@@ -3,16 +3,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { IconType } from "react-icons";
+import { WeatherIcon } from "@/components/weather/WeatherIcon";
 import {
-  WiCloud,
-  WiCloudy,
-  WiDaySunny,
-  WiRain,
-  WiRainMix,
-  WiShowers,
-  WiSnow,
-} from "react-icons/wi";
+  getWeatherIconCode,
+  getWeatherIconCodeFromKma,
+} from "@/lib/weather/get-weather-icon-code";
 
 interface DailyWeather {
   date: string;
@@ -45,47 +40,10 @@ async function fetchWeeklyWeather(): Promise<WeeklyWeatherResponse> {
       message?: string;
     } | null;
 
-    throw new Error(
-      errorBody?.message ?? "주간 날씨를 불러오지 못했습니다.",
-    );
+    throw new Error(errorBody?.message ?? "주간 날씨를 불러오지 못했습니다.");
   }
 
   return response.json() as Promise<WeeklyWeatherResponse>;
-}
-
-function getWeatherIcon(condition: string | null): IconType {
-  if (!condition) {
-    return WiCloud;
-  }
-
-  if (condition.includes("눈") && condition.includes("비")) {
-    return WiRainMix;
-  }
-
-  if (condition.includes("눈")) {
-    return WiSnow;
-  }
-
-  if (condition.includes("소나기")) {
-    return WiShowers;
-  }
-
-  if (
-    condition.includes("비") ||
-    condition.includes("빗방울")
-  ) {
-    return WiRain;
-  }
-
-  if (condition.includes("흐림")) {
-    return WiCloudy;
-  }
-
-  if (condition.includes("구름")) {
-    return WiCloud;
-  }
-
-  return WiDaySunny;
 }
 
 function getMonthDay(dateString: string): string {
@@ -97,11 +55,7 @@ function getMonthDay(dateString: string): string {
   }).format(date);
 }
 
-function Temperature({
-  value,
-}: {
-  value: number | null;
-}) {
+function Temperature({ value }: { value: number | null }) {
   return <>{value === null ? "--" : Math.round(value)}°</>;
 }
 
@@ -132,9 +86,7 @@ export function WeeklyWeather() {
     return (
       <div className="flex min-h-44 flex-col items-center justify-center gap-2 text-neutral-400">
         <p>주간 날씨를 불러오지 못했습니다.</p>
-        <p className="text-sm text-red-400">
-          {error.message}
-        </p>
+        <p className="text-sm text-red-400">{error.message}</p>
       </div>
     );
   }
@@ -143,25 +95,17 @@ export function WeeklyWeather() {
     <section className="w-full">
       <div className="mb-4 flex items-end justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-neutral-100">
-            주간 날씨
-          </h2>
+          <h2 className="text-xl font-semibold text-neutral-100">주간 날씨</h2>
 
-          <p className="mt-1 text-sm text-neutral-500">
-            {data.location}
-          </p>
+          <p className="mt-1 text-sm text-neutral-500">{data.location}</p>
         </div>
 
-        <p className="text-xs text-neutral-600">
-          출처: 기상청
-        </p>
+        <p className="text-xs text-neutral-600">출처: 기상청</p>
       </div>
 
       <div className="grid grid-cols-7 gap-2 md:gap-3">
         {data.forecasts.map((forecast, index) => {
-          const WeatherIcon = getWeatherIcon(
-            forecast.condition,
-          );
+          const iconCode = getWeatherIconCode(forecast.condition);
 
           return (
             <article
@@ -188,10 +132,11 @@ export function WeeklyWeather() {
               </p>
 
               <WeatherIcon
-                aria-label={
-                  forecast.condition ?? "날씨 정보 없음"
-                }
-                className="my-2 h-12 w-12 shrink-0 md:h-14 md:w-14"
+                code={iconCode}
+                isDaytime
+                size={56}
+                ariaLabel={forecast.condition ?? "날씨 정보 없음"}
+                className="my-2 shrink-0"
               />
 
               <p className="max-w-full truncate text-sm text-neutral-300">
@@ -200,15 +145,11 @@ export function WeeklyWeather() {
 
               <p className="mt-3 whitespace-nowrap text-sm">
                 <span className="font-semibold text-neutral-100">
-                  <Temperature
-                    value={forecast.maxTemperature}
-                  />
+                  <Temperature value={forecast.maxTemperature} />
                 </span>
 
                 <span className="ml-2 text-neutral-500">
-                  <Temperature
-                    value={forecast.minTemperature}
-                  />
+                  <Temperature value={forecast.minTemperature} />
                 </span>
               </p>
 
@@ -224,8 +165,7 @@ export function WeeklyWeather() {
 
       {data.warnings.length > 0 && (
         <p className="mt-3 text-xs text-amber-400/70">
-          일부 예보 자료를 가져오지 못해 표시 정보가
-          제한될 수 있습니다.
+          일부 예보 자료를 가져오지 못해 표시 정보가 제한될 수 있습니다.
         </p>
       )}
     </section>

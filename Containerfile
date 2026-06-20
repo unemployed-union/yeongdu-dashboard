@@ -46,6 +46,10 @@ FROM node:${NODE_VERSION} AS runner
 
 WORKDIR /app
 
+LABEL org.opencontainers.image.source="https://github.com/unemployed-union/yeongdu-dashboard"
+LABEL org.opencontainers.image.description="Tablet desk clock, calendar and weather dashboard"
+LABEL org.opencontainers.image.licenses="MIT"
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
