@@ -1,3 +1,12 @@
-ignoredBuiltDependencies:
-  - sharp
-  - unrs-resolver
+minimumReleaseAge: 0
+
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
+
+minimumReleaseAgeExclude:
+  - "@full-ui/headless-calendar@7.0.0"
+  - "@fullcalendar/core@7.0.0"
+  - "@fullcalendar/react@7.0.0"
+  - "@types/luxon@3.7.2"
+  - "semver@7.8.5"
