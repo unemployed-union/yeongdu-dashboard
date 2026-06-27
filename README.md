@@ -1,8 +1,388 @@
 # YeongduDashboard
+![weather](./img/weather.png)
+![clock](./img/clock.png)
+![calendar](./img/calendar.png)
+
 
 태블릿이나 보조 모니터를 탁상 디스플레이처럼 활용하기 위한 Next.js 기반 대시보드입니다.
 
 현재 시각, 오늘 일정, Google Calendar 월간 일정, 기상청 날씨 예보와 대한민국 공휴일을 한 화면에서 확인할 수 있습니다.
+
+## 실행 방법
+
+### 1. Google OAuth 사전 설정
+
+이 애플리케이션에서 Google Calendar 일정을 조회하려면 사용자가 직접 Google Cloud에서 OAuth 클라이언트를 만들어야 합니다.
+
+1. Google Cloud Console에서 프로젝트를 생성합니다.
+2. **Google Calendar API**를 활성화합니다.
+3. OAuth 동의 화면을 설정합니다.
+4. OAuth 클라이언트 유형을 **웹 애플리케이션**으로 생성합니다.
+5. 사용하는 환경에 맞는 Callback URI를 **승인된 리디렉션 URI**에 등록합니다.
+
+로컬에서 실행하는 경우:
+
+```text
+http://localhost:3000/api/google/callback
+```
+
+도메인을 사용해 배포한 경우:
+
+```text
+https://dashboard.example.com/api/google/callback
+```
+
+등록한 주소와 `GOOGLE_REDIRECT_URI` 환경변수는 완전히 같아야 합니다.
+
+```env
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=https://dashboard.example.com/api/google/callback
+GOOGLE_REFRESH_TOKEN=
+```
+
+> `http`와 `https`, 포트 번호, 경로, 마지막 `/` 포함 여부가 하나라도 다르면 `redirect_uri_mismatch` 오류가 발생합니다.
+
+> 배포 환경의 Redirect URI는 HTTPS를 사용해야 합니다. `localhost`는 HTTP 사용이 허용되지만, `http://192.168.x.x:3000`과 같은 일반 IP 주소는 Google OAuth Callback URI로 사용할 수 없습니다.
+
+---
+
+### 2. 컨테이너 이미지 받기
+
+GHCR에서 이미지를 받습니다.
+
+```bash
+podman pull ghcr.io/unemployed-union/yeongdu-dashboard:latest
+```
+
+Docker를 사용하는 경우:
+
+```bash
+docker pull ghcr.io/unemployed-union/yeongdu-dashboard:latest
+```
+
+---
+
+### 3. 최초 컨테이너 실행
+
+먼저 `.env.production` 파일에 필요한 환경변수를 설정합니다.
+
+최초 실행 시에는 `GOOGLE_REFRESH_TOKEN`을 비워 두어도 됩니다.
+
+```env
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
+GOOGLE_REFRESH_TOKEN=
+
+KMA_SERVICE_KEY=
+KMA_NX=
+KMA_NY=
+KMA_MID_LAND_REG_ID=
+KMA_MID_TA_REG_ID=
+WEATHER_LOCATION_NAME=
+
+HOLIDAY_ICS_URL=
+```
+
+Podman으로 실행하는 경우:
+
+```bash
+podman run -d \
+  --name yeongdu-dashboard \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  --env-file .env.production \
+  ghcr.io/unemployed-union/yeongdu-dashboard:latest
+```
+
+Docker를 사용하는 경우:
+
+```bash
+docker run -d \
+  --name yeongdu-dashboard \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  --env-file .env.production \
+  ghcr.io/unemployed-union/yeongdu-dashboard:latest
+```
+
+---
+
+### 4. Google 계정 인증
+
+컨테이너를 실행한 뒤 브라우저에서 다음 주소로 접속합니다.
+
+```text
+https://서비스주소/api/google/auth
+```
+
+로컬에서 실행 중이라면 다음 주소를 사용합니다.
+
+```text
+http://localhost:3000/api/google/auth
+```
+
+Google 계정을 선택하고 Calendar 읽기 권한을 승인합니다.
+
+인증에 성공하면 브라우저에 인증 완료 메시지가 포함된 JSON 응답이 표시됩니다.
+
+---
+
+### 5. Refresh Token 확인
+
+인증이 완료되면 컨테이너 로그에 다음과 같은 내용이 출력됩니다.
+
+```text
+GOOGLE_REFRESH_TOKEN=1//새로발급된토큰
+GET /api/google/callback?state=...&code=... 200
+```
+
+이 중 다음 한 줄의 값만 복사합니다.
+
+```text
+GOOGLE_REFRESH_TOKEN=1//새로발급된토큰
+```
+
+`GET /api/google/callback...`으로 시작하는 다음 로그까지 환경변수에 포함하지 않도록 주의합니다.
+
+Podman 로그 확인:
+
+```bash
+podman logs yeongdu-dashboard
+```
+
+Docker 로그 확인:
+
+```bash
+docker logs yeongdu-dashboard
+```
+
+---
+
+### 6. Refresh Token 등록
+
+발급받은 토큰을 `.env.production`에 입력합니다.
+
+```env
+GOOGLE_REFRESH_TOKEN=1//새로발급된토큰
+```
+
+토큰 앞뒤에 불필요한 공백이나 줄바꿈이 들어가지 않도록 주의합니다.
+
+잘못된 예:
+
+```env
+GOOGLE_REFRESH_TOKEN=1//새로발급된토큰 GET /api/google/callback...
+```
+
+올바른 예:
+
+```env
+GOOGLE_REFRESH_TOKEN=1//새로발급된토큰
+```
+
+---
+
+### 7. 컨테이너 재생성
+
+환경변수를 수정한 뒤에는 단순히 컨테이너를 재시작하는 것이 아니라 **컨테이너를 재생성해야 합니다.**
+
+Podman:
+
+```bash
+podman rm -f yeongdu-dashboard
+
+podman run -d \
+  --name yeongdu-dashboard \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  --env-file .env.production \
+  ghcr.io/unemployed-union/yeongdu-dashboard:latest
+```
+
+Docker:
+
+```bash
+docker rm -f yeongdu-dashboard
+
+docker run -d \
+  --name yeongdu-dashboard \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  --env-file .env.production \
+  ghcr.io/unemployed-union/yeongdu-dashboard:latest
+```
+
+Compose를 사용하는 경우:
+
+```bash
+podman compose up -d --force-recreate
+```
+
+또는:
+
+```bash
+docker compose up -d --force-recreate
+```
+
+재생성 후 다음 API에 접속하여 Google Calendar 일정이 정상적으로 반환되는지 확인합니다.
+
+```text
+https://서비스주소/api/calendar/today
+```
+
+---
+
+## 토큰 관련 주의사항
+
+### OAuth 앱을 In Production으로 변경한 뒤 발급하기
+
+OAuth 동의 화면이 **Testing** 상태일 때 Calendar 권한으로 발급한 Refresh Token은 약 7일 후 만료될 수 있습니다.
+
+장기간 사용하는 대시보드라면 Google Cloud Console에서 OAuth 앱의 게시 상태를 먼저 확인합니다.
+
+```text
+Google Auth Platform
+→ Audience
+→ Publishing status
+→ In production
+```
+
+`In Production`으로 변경하기 전에 발급한 기존 토큰은 자동으로 갱신되지 않습니다. 게시 상태를 변경한 뒤 `/api/google/auth`에서 다시 로그인하여 새로운 Refresh Token을 발급해야 합니다.
+
+---
+
+### In Production이어도 토큰이 영구적으로 보장되지는 않음
+
+`In Production` 상태는 Testing 환경의 7일 만료 제한을 피하기 위한 설정입니다.
+
+다음과 같은 경우에는 Refresh Token이 다시 무효화될 수 있습니다.
+
+* 사용자가 Google 계정에서 앱 접근 권한을 제거한 경우
+* OAuth 클라이언트를 삭제하거나 다시 생성한 경우
+* Client ID 또는 Client Secret을 변경한 경우
+* 동일한 계정과 OAuth 클라이언트에서 토큰을 반복적으로 많이 발급한 경우
+* Google의 보안 정책에 따라 토큰이 취소된 경우
+
+다음 오류가 발생하면 Refresh Token이 만료되었거나 취소된 상태입니다.
+
+```text
+invalid_grant
+Token has been expired or revoked.
+```
+
+이 경우 `/api/google/auth`에서 인증을 다시 진행하고 새 토큰으로 환경변수를 교체해야 합니다.
+
+---
+
+### Callback URI는 정확히 일치해야 함
+
+Google Cloud Console의 **승인된 리디렉션 URI**와 다음 환경변수는 문자 단위로 같아야 합니다.
+
+```env
+GOOGLE_REDIRECT_URI=https://dashboard.example.com/api/google/callback
+```
+
+다음 값들은 서로 다른 URI로 취급됩니다.
+
+```text
+http://localhost:3000/api/google/callback
+http://localhost:3001/api/google/callback
+http://localhost:3000/api/google/callback/
+https://localhost:3000/api/google/callback
+```
+
+일치하지 않으면 다음 오류가 발생합니다.
+
+```text
+redirect_uri_mismatch
+```
+
+---
+
+### 로컬 환경과 배포 환경의 Callback URI
+
+로컬 개발 환경:
+
+```env
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/google/callback
+```
+
+실제 배포 환경:
+
+```env
+GOOGLE_REDIRECT_URI=https://dashboard.example.com/api/google/callback
+```
+
+로컬과 배포 환경을 모두 사용한다면 Google Cloud Console에 두 주소를 각각 등록할 수 있습니다.
+
+```text
+http://localhost:3000/api/google/callback
+https://dashboard.example.com/api/google/callback
+```
+
+일반 사설 IP 주소를 Callback URI로 사용하는 방식은 권장되지 않습니다.
+
+```text
+http://192.168.0.10:3000/api/google/callback
+```
+
+NAS나 홈 서버에서 실행할 때는 도메인과 HTTPS 리버스 프록시를 설정하는 방법이 가장 안정적입니다.
+
+---
+
+### Refresh Token은 비밀정보임
+
+`GOOGLE_REFRESH_TOKEN`은 Google Calendar 데이터에 접근할 수 있는 민감한 인증정보입니다.
+
+다음 장소에 저장하거나 공개하지 않습니다.
+
+* GitHub 저장소
+* README
+* Dockerfile
+* 컨테이너 이미지
+* 스크린샷
+* 공개된 로그
+* 채팅 또는 게시판
+
+다음 파일은 Git 저장소에 포함하지 않습니다.
+
+```gitignore
+.env
+.env.local
+.env.production
+.env.*.local
+```
+
+공개 저장소에는 실제 값이 없는 `.env.example`만 올립니다.
+
+```env
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
+GOOGLE_REFRESH_TOKEN=
+```
+
+토큰이 외부에 노출되었다면 기존 토큰을 계속 사용하지 말고 새로 발급하여 교체합니다.
+
+---
+
+### 다른 사용자가 이미지를 실행하는 경우
+
+컨테이너 이미지에는 Google OAuth 인증정보가 포함되어 있지 않습니다.
+
+이미지를 사용하는 각 사용자는 자신의 Google Cloud 프로젝트에서 다음 값을 직접 발급하고 설정해야 합니다.
+
+```env
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
+GOOGLE_REFRESH_TOKEN=
+```
+
+한 사용자의 Refresh Token을 다른 사용자 또는 다른 설치 환경과 공유해서는 안 됩니다.
+
 
 ## 주요 기능
 
